@@ -31,7 +31,5 @@ public class CommandTest {
         cmd = Command.instanceOf("get mykey\r\n");
         assertEquals("get", cmd.getName());
         assertEquals("mykey", cmd.getKey());
-
-
     }
 }

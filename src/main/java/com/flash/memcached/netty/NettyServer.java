@@ -11,6 +11,7 @@ package com.flash.memcached.netty;
 
 import com.flash.memcached.core.KeyValueStorageService;
 import com.flash.memcached.core.KeyValueStorageServiceImpl;
+import com.flash.memcached.logging.Logger;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -220,22 +221,27 @@ public class NettyServer {
              * 在这个例子中也是NioServerSocketChannel。
              */
             b = b.childOption(ChannelOption.SO_KEEPALIVE, true);
-            /***
-             * 绑定端口并启动去接收进来的连接
-             */
+
+            // Bind the port and accept incoming connecting.
             ChannelFuture f = b.bind(port).sync();
-            /**
-             * 这里会一直等待，直到socket被关闭
-             */
+
+            // Will block until socket was closed.
             f.channel().closeFuture().sync();
         } finally {
-            /***
-             * 优雅关闭
-             */
             workerGroup.shutdownGracefully();
             bossGroup.shutdownGracefully();
         }
     }
+
+    public static void start(int port)  {
+        KeyValueStorageService keyValueStorageService = new KeyValueStorageServiceImpl();
+        try {
+            new NettyServer(port, keyValueStorageService).run();
+        } catch (Exception e) {
+            Logger.log(e.getMessage());
+        }
+    }
+
 
     public static void main(String[] args) throws Exception {
         int port;
@@ -244,7 +250,7 @@ public class NettyServer {
         } else {
             port = 8000;
         }
-        KeyValueStorageService keyValueStorageService = new KeyValueStorageServiceImpl();
-        new NettyServer(port, keyValueStorageService).run();
+        start(port);
+
     }
 }
