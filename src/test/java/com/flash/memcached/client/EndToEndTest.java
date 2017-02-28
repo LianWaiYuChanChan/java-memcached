@@ -1,11 +1,8 @@
 package com.flash.memcached.client;
 
-import com.flash.memcached.cmd.Command;
 import com.flash.memcached.netty.NettyServer;
 import org.junit.Before;
 import org.junit.Test;
-
-import static org.junit.Assert.assertEquals;
 
 /**
  * <p>
@@ -23,8 +20,8 @@ public class EndToEndTest {
 
     private static class NettyThread implements Runnable {
         private int port;
-        public NettyThread(int port) {
 
+        public NettyThread(int port) {
             this.port = port;
         }
 
@@ -42,7 +39,6 @@ public class EndToEndTest {
         new Thread(nettyThread).start();
         //wait for server startup completely.
         Thread.sleep(10 * 1000);
-
     }
 
     @Test
