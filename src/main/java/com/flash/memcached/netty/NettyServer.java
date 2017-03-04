@@ -9,6 +9,7 @@ package com.flash.memcached.netty;
  * @author Jichao Zhang
  */
 
+import com.flash.memcached.cmd.Command;
 import com.flash.memcached.core.KeyValueStorageService;
 import com.flash.memcached.core.KeyValueStorageServiceImpl;
 import com.flash.memcached.logging.Logger;
@@ -114,10 +115,16 @@ public class NettyServer {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             ByteBuf byteBuf = (ByteBuf)msg;
-            String cmd = byteBuf.toString(CharsetUtil.UTF_8);
-            String ret = kvStorageSrv.executeCmd(cmd);
-            ByteBuf returnByteBuff = Unpooled.wrappedBuffer(ret.getBytes(CharsetUtil.UTF_8));
-            ctx.write(returnByteBuff);
+            String receives = byteBuf.toString(CharsetUtil.UTF_8);
+            String[] cmds = receives.split(Command.COMMAND_SPLITTER);
+            for (String cmd : cmds){
+                String ret = kvStorageSrv.executeCmd(cmd);
+                if (cmds.length > 1) {
+                    ret = ret + Command.COMMAND_SPLITTER;
+                }
+                ByteBuf returnByteBuff = Unpooled.wrappedBuffer(ret.getBytes(CharsetUtil.UTF_8));
+                ctx.write(returnByteBuff);
+            }
             //cxt.writeAndFlush(msg)
 
             //请注意，这里我并不需要显式的释放，因为在定入的时候netty已经自动释放

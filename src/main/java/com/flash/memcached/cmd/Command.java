@@ -12,6 +12,9 @@ import com.flash.memcached.logging.Logger;
  */
 
 public class Command {
+    public static final String TOKEN_SPLITTER = " ";
+    public static final String COMMAND_SPLITTER = "!##!";
+
     public String getName() {
         return name;
     }
@@ -62,18 +65,27 @@ public class Command {
         this.value = value;
     }
 
+    public long getCallingkey() {
+        return callingkey;
+    }
+
+    public void setCallingkey(long callingkey) {
+        this.callingkey = callingkey;
+    }
+
     private String name;
     private long flags;
     private long ttl;
     private long length;
     private String value;
+    private long callingkey;
 
     public static Command instanceOf(String cmd) {
         Logger.log(cmd);
 
-        String cmdTemp = cmd.replace("\r\n", " ").trim();
+        String cmdTemp = cmd.replace("\r\n", TOKEN_SPLITTER).trim();
 
-        String[] tokens = cmdTemp.split(" ");
+        String[] tokens = cmdTemp.split("\\s+");
         Command command = null;
         String firstToken = tokens[0];
         if ("set".equals(firstToken)) {
@@ -84,10 +96,15 @@ public class Command {
             command.setTtl(Long.parseLong(tokens[3]));
             command.setLength(Long.parseLong(tokens[4]));
             command.setValue(tokens[5]);
+            if (tokens.length > 6) {
+                command.setCallingkey(Long.parseLong(tokens[6]));
+            }
         } else if ("get".equals(firstToken)) {
             command = new Command("get");
             command.setKey(tokens[1]);
-
+            if (tokens.length > 2) {
+                command.setCallingkey(Long.parseLong(tokens[2]));
+            }
         }
 
         return command;

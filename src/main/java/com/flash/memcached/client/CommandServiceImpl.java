@@ -3,6 +3,8 @@ package com.flash.memcached.client;
 import com.flash.memcached.netty.AsyncResponseCallback;
 import com.flash.memcached.netty.MemcachedClient;
 
+import java.util.concurrent.CountDownLatch;
+
 /**
  * <p>
  * Creation Date: 2/27/2017 <br>
@@ -25,12 +27,24 @@ public class CommandServiceImpl implements CommandService {
 
     @Override
     public String executeCmd(String cmd) {
+        final CountDownLatch syncCountDownLatch = new CountDownLatch(1);
+        final StringBuilder ret = new StringBuilder();
+        executeCmd(cmd, new AsyncResponseCallback() {
+            @Override
+            public void asyncResponse(String result) {
+                if (result != null) {
+                    ret.append(result);
+                }
+                syncCountDownLatch.countDown();
+            }
+        });
         try {
-            return client.getMemcachedConnector().runCommand(cmd);
-        } catch (Exception e) {
+            syncCountDownLatch.await();
+        } catch (InterruptedException e) {
             e.printStackTrace();
+            return null;
         }
-        return null;
+        return ret.toString();
     }
 
     public void executeCmd(String cmd, AsyncResponseCallback callback) {

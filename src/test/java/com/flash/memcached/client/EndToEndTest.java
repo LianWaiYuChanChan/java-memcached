@@ -1,5 +1,6 @@
 package com.flash.memcached.client;
 
+import com.flash.memcached.netty.AsyncResponseCallback;
 import com.flash.memcached.netty.NettyServer;
 import org.junit.After;
 import org.junit.Before;
@@ -43,7 +44,7 @@ public class EndToEndTest {
          NettyThread nettyThread = new NettyThread(nettyServer);
          new Thread(nettyThread).start();
          //wait for server startup completely.
-         Thread.sleep(10 * 1000);
+         Thread.sleep(5 * 1000);
     }
 
     @After
@@ -53,7 +54,7 @@ public class EndToEndTest {
         }
     }
 
-    @Test
+   // @Test
     public void testCommand() {
         //Basic set.
          CommandService cmdService = new CommandServiceImpl(host, port);
@@ -63,5 +64,56 @@ public class EndToEndTest {
          ret = cmdService.executeCmd("get mykey");
          System.err.println(ret);
          assertEquals("data", ret);
+    }
+
+    @Test
+    public void testAsyncCommand() throws InterruptedException {
+        //Basic set.
+        final CommandServiceImpl cmdService = new CommandServiceImpl(host, port);
+        cmdService.executeCmd("set mykey 0 60 4\r\ndata\r\n", new AsyncResponseCallback() {
+            @Override
+            public void asyncResponse(String result) {
+                System.err.println("async result: " + result);
+
+
+            }
+        });
+        cmdService.executeCmd("get mykey", new AsyncResponseCallback() {
+            @Override
+            public void asyncResponse(String result2) {
+                System.err.println("async result: " + result2);
+                assertEquals("data", result2);
+            }
+        });
+        try {
+            Thread.sleep(20 * 1000);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    public void testNestedAsyncCommand() throws InterruptedException {
+        //Basic set.
+        final CommandServiceImpl cmdService = new CommandServiceImpl(host, port);
+        cmdService.executeCmd("set mykey 0 60 4\r\ndata\r\n", new AsyncResponseCallback() {
+            @Override
+            public void asyncResponse(String result) {
+                System.err.println("nested async result: " + result);
+
+                cmdService.executeCmd("nested get mykey", new AsyncResponseCallback() {
+                    @Override
+                    public void asyncResponse(String result2) {
+                        System.err.println("async result: " + result2);
+                        assertEquals("data", result2);
+                    }
+                });
+            }
+        });
+        try {
+            Thread.sleep(20 * 1000);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

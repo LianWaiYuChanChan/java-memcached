@@ -1,5 +1,6 @@
 package com.flash.memcached.netty;
 
+import com.flash.memcached.cmd.Command;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -15,6 +16,8 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.CharsetUtil;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -49,8 +52,7 @@ public class MemcachedClient {
     public class MemcachedConnector implements Runnable {
         private String host;
         private int port;
-        private StringBuilder syncResponse = new StringBuilder();
-        private SendCommandHandler sendCommandHandler = new SendCommandHandler(syncResponse);
+        private SendCommandHandler sendCommandHandler = new SendCommandHandler();
         private EventLoopGroup connectionWorkerGroup;
         private ChannelFuture connectionFuture;
         private CountDownLatch connectCountDownLatch;
@@ -96,15 +98,6 @@ public class MemcachedClient {
             connect();
         }
 
-        public String runCommand(String command) throws Exception {
-            if (isConnected()) {
-                sendCommandHandler.sendCommand(command);
-                return syncResponse.toString();
-            } else {
-                throw new IOException("Not connected yet!");
-            }
-        }
-
         public void runCommand(String command, AsyncResponseCallback callback) throws Exception {
             if (isConnected()) {
                 sendCommandHandler.sendCommand(command, callback);
@@ -128,35 +121,16 @@ public class MemcachedClient {
     private class SendCommandHandler extends ChannelHandlerAdapter {
         private ChannelHandlerContext ctx;
         // for sync syncResponse
-        private StringBuilder syncResponse;
-        private CountDownLatch syncResponseDownLatch;
-        private AsyncResponseCallback asyncResponseCallback;
-        private CountDownLatch asyncResponseDownLatch;
+        private final Map<Long, AsyncResponseCallback> callbackMap = new HashMap<>();
 
-        SendCommandHandler(StringBuilder syncResponse) {
-            this.syncResponse = syncResponse;
-        }
-
-        public void sendCommand(String command) throws InterruptedException {
-            syncResponseDownLatch = new CountDownLatch(1);
-            syncResponse.delete(0, syncResponse.length());
-            ctx.writeAndFlush(Unpooled.wrappedBuffer(command.getBytes(CharsetUtil.UTF_8))).sync();
-            syncResponseDownLatch.await();
-            syncResponseDownLatch = null;
+        SendCommandHandler() {
         }
 
         public void sendCommand(String command, AsyncResponseCallback asyncResponseCallback) throws InterruptedException {
-            if (asyncResponseDownLatch != null && asyncResponseCallback != null) {
-                asyncResponseDownLatch.await();
-                asyncResponseDownLatch = null;
-            }
-
-            this.asyncResponseCallback = asyncResponseCallback;
-            if (asyncResponseCallback != null) {
-                asyncResponseDownLatch = new CountDownLatch(1);
-            }
-
-            ctx.writeAndFlush(Unpooled.wrappedBuffer(command.getBytes(CharsetUtil.UTF_8))).sync();
+            callbackMap.put(asyncResponseCallback.getCallingKey(), asyncResponseCallback);
+            StringBuilder commandWithKey = new StringBuilder(command);
+            commandWithKey.append(Command.TOKEN_SPLITTER).append(asyncResponseCallback.getCallingKey()).append(Command.COMMAND_SPLITTER);
+            ctx.writeAndFlush(Unpooled.wrappedBuffer(commandWithKey.toString().getBytes(CharsetUtil.UTF_8))).sync();
         }
 
         @Override
@@ -167,15 +141,16 @@ public class MemcachedClient {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             ByteBuf byteBuf = (ByteBuf)msg;
-            String response = byteBuf.toString(CharsetUtil.UTF_8);
-            if (syncResponseDownLatch != null) {
-                syncResponse.append(response);
-                syncResponseDownLatch.countDown();
-            }
-            if (asyncResponseCallback != null) {
-                asyncResponseCallback.asyncResponse(response);
-                asyncResponseCallback = null;
-                asyncResponseDownLatch.countDown();
+            String receives = byteBuf.toString(CharsetUtil.UTF_8);
+            String[] responses = receives.split(Command.COMMAND_SPLITTER);
+            for (String response : responses) {
+                String[] tokens = response.split(Command.TOKEN_SPLITTER);
+                String callingKey = tokens[tokens.length - 1].trim();
+                response = response.substring(0, response.length() - callingKey.length()).trim();
+                AsyncResponseCallback asyncResponseCallback = callbackMap.remove(Long.parseLong(callingKey));
+                if (asyncResponseCallback != null) {
+                    asyncResponseCallback.asyncResponse(response);
+                }
             }
         }
 

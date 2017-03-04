@@ -26,16 +26,23 @@ public class KeyValueStorageServiceImpl implements KeyValueStorageService {
     @Override
     public String executeCmd(String cmd) {
         Command command = Command.instanceOf(cmd);
-        String cmdName = command.getName();
-        String result = "";
-        if (cmdName.equals("set")) {
-            storage.put(command.getKey(), command.getValue());
-            result = "STORE";
-        } else if (cmdName.equals("get")) {
-            String value = storage.get(command.getKey());
-            result = value == null ? "" : value;
+        StringBuilder result = new StringBuilder();
+        if (command != null) {
+            String cmdName = command.getName();
+            if (cmdName.equals("set")) {
+                storage.put(command.getKey(), command.getValue());
+                result.append("STORE");
+            } else if (cmdName.equals("get")) {
+                String value = storage.get(command.getKey());
+                if (value != null) {
+                    result.append(value);
+                }
+            }
+            if (command.getCallingkey() > 0) {
+                result.append(Command.TOKEN_SPLITTER).append(command.getCallingkey());
+            }
         }
-        return result;
+        return result.toString();
     }
 
 }
