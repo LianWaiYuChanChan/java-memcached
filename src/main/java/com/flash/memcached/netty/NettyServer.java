@@ -9,6 +9,7 @@ package com.flash.memcached.netty;
  * @author Jichao Zhang
  */
 
+import com.flash.memcached.cmd.Command;
 import com.flash.memcached.core.KeyValueStorageService;
 import com.flash.memcached.core.KeyValueStorageServiceImpl;
 import com.flash.memcached.logging.Logger;
@@ -19,6 +20,8 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.logging.LogLevel;
+import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.CharsetUtil;
 import io.netty.util.ReferenceCountUtil;
 
@@ -55,7 +58,7 @@ public class NettyServer {
                 System.out.flush();
             }*/
                 //这一句和上面注释的的效果都是打印输入的字符
-                System.out.println(in.toString(CharsetUtil.US_ASCII));
+                System.out.println(in.toString(CharsetUtil.UTF_8));
             } finally {
                 /**
                  * ByteBuf是一个引用计数对象，这个对象必须显示地调用release()方法来释放。
@@ -91,10 +94,10 @@ public class NettyServer {
      * 现在仅仅只需要继承ChannelHandlerAdapter类而不是你自己去实现接口方法。
      * 用来对请求响应
      */
-    public class ResponseServerHandler extends ChannelHandlerAdapter {
+    public class ReceiveCommandHandler extends ChannelHandlerAdapter {
         private KeyValueStorageService kvStorageSrv;
 
-        public ResponseServerHandler(KeyValueStorageService kvStorageSrv) {
+        public ReceiveCommandHandler(KeyValueStorageService kvStorageSrv) {
             this.kvStorageSrv = kvStorageSrv;
         }
 
@@ -112,10 +115,16 @@ public class NettyServer {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             ByteBuf byteBuf = (ByteBuf)msg;
-            String cmd = byteBuf.toString(CharsetUtil.US_ASCII);
-            String ret = kvStorageSrv.executeCmd(cmd);
-            ByteBuf returnByteBuff = Unpooled.wrappedBuffer(ret.getBytes());
-            ctx.write(returnByteBuff);
+            String receives = byteBuf.toString(CharsetUtil.UTF_8);
+            String[] cmds = receives.split(Command.COMMAND_SPLITTER);
+            for (String cmd : cmds){
+                String ret = kvStorageSrv.executeCmd(cmd);
+                if (cmds.length > 1) {
+                    ret = ret + Command.COMMAND_SPLITTER;
+                }
+                ByteBuf returnByteBuff = Unpooled.wrappedBuffer(ret.getBytes(CharsetUtil.UTF_8));
+                ctx.write(returnByteBuff);
+            }
             //cxt.writeAndFlush(msg)
 
             //请注意，这里我并不需要显式的释放，因为在定入的时候netty已经自动释放
@@ -154,11 +163,15 @@ public class NettyServer {
 
 
     private int port;
-    private KeyValueStorageService kvStroageSrv;
+    private KeyValueStorageService kvStorageSrv;
 
-    public NettyServer(int port, KeyValueStorageService kvStroageSrv) {
+    private EventLoopGroup serverBossGroup;
+    private EventLoopGroup connectionWorkerGroup;
+    private ChannelFuture serverStartFuture;
+
+    public NettyServer(int port, KeyValueStorageService kvStorageSrv) {
         this.port = port;
-        this.kvStroageSrv = kvStroageSrv;
+        this.kvStorageSrv = kvStorageSrv;
     }
 
     public void run() throws Exception {
@@ -173,8 +186,8 @@ public class NettyServer {
          * 如何知道多少个线程已经被使用，如何映射到已经创建的Channels上都需要依赖于EventLoopGroup的实现，
          * 并且可以通过构造函数来配置他们的关系。
          */
-        EventLoopGroup bossGroup = new NioEventLoopGroup();
-        EventLoopGroup workerGroup = new NioEventLoopGroup();
+        serverBossGroup = new NioEventLoopGroup();
+        connectionWorkerGroup = new NioEventLoopGroup();
         System.out.println("Listen on: " + port);
         try {
             /**
@@ -185,9 +198,9 @@ public class NettyServer {
             /**
              * 这一步是必须的，如果没有设置group将会报java.lang.IllegalStateException: group not set异常
              */
-            b = b.group(bossGroup, workerGroup);
+            b = b.group(serverBossGroup, connectionWorkerGroup);
             /***
-             * ServerSocketChannel以NIO的selector为基础进行实现的，用来接收新的连接
+             * ServerSocketChannel以NIO的selctor为基础进行实现的，用来接收新的连接
              * 这里告诉Channel如何获取新的连接.
              */
             b = b.channel(NioServerSocketChannel.class);
@@ -203,13 +216,14 @@ public class NettyServer {
             b = b.childHandler(new ChannelInitializer<SocketChannel>() { // (4)
                 @Override
                 public void initChannel(SocketChannel ch) throws Exception {
-                    ch.pipeline().addLast(new ResponseServerHandler(kvStroageSrv));
-                    //ch.pipeline().addLast(new ResponseServerHandler());
-                    // ch.pipeline().addLast(new TimeServerHandler());
+                    ch.pipeline().addLast("LoggingHandler", new LoggingHandler(LogLevel.DEBUG));
+                    ch.pipeline().addLast("ReceivedCommandHandler", new ReceiveCommandHandler(kvStorageSrv));
+                    // ch.pipeline().addLast();
                 }
             });
             /***
              * 你可以设置这里指定的通道实现的配置参数。
+             * ﻿ServerChannel允许的最大队列长度
              * 我们正在写一个TCP/IP的服务端，
              * 因此我们被允许设置socket的参数选项比如tcpNoDelay和keepAlive。
              * 请参考ChannelOption和详细的ChannelConfig实现的接口文档以此可以对ChannelOptions的有一个大概的认识。
@@ -223,23 +237,46 @@ public class NettyServer {
             b = b.childOption(ChannelOption.SO_KEEPALIVE, true);
 
             // Bind the port and accept incoming connecting.
-            ChannelFuture f = b.bind(port).sync();
+            serverStartFuture = b.bind(port).sync();
+
+            System.out.println("Server started on " + port);
 
             // Will block until socket was closed.
-            f.channel().closeFuture().sync();
+            serverStartFuture.channel().closeFuture().sync();
         } finally {
-            workerGroup.shutdownGracefully();
-            bossGroup.shutdownGracefully();
+            shutdown();
         }
     }
 
-    public static void start(int port)  {
-        KeyValueStorageService keyValueStorageService = new KeyValueStorageServiceImpl();
+    public boolean shutdown() {
+        if (connectionWorkerGroup != null) {
+            connectionWorkerGroup.shutdownGracefully();
+        }
+        if (serverBossGroup != null) {
+            serverBossGroup.shutdownGracefully();
+        }
+        if (!isRunning()) {
+            System.out.println("Server was shutdown.");
+        }
+        return true;
+    }
+
+
+    public boolean isRunning() {
+        return serverStartFuture != null && serverStartFuture.channel().isOpen();
+    }
+
+    public void start()  {
         try {
-            new NettyServer(port, keyValueStorageService).run();
+            run();
         } catch (Exception e) {
             Logger.log(e.getMessage());
         }
+    }
+
+    public static NettyServer getInstance(int port) {
+        KeyValueStorageService keyValueStorageService = new KeyValueStorageServiceImpl();
+        return new NettyServer(port, keyValueStorageService);
     }
 
 
@@ -250,7 +287,12 @@ public class NettyServer {
         } else {
             port = 8000;
         }
-        start(port);
-
+        final NettyServer server = getInstance(port);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                server.start();
+            }
+        }).start();
     }
 }

@@ -19,17 +19,19 @@ public class CommandTest {
     public void testCommand() {
 
         //Basic set.
-        Command cmd = Command.instanceOf("set mykey 0 60 4\r\ndata\r\n");
+        Command cmd = Command.instanceOf("set mykey 0 60 4\r\ndata\r\n 1283838747");
         assertEquals("set", cmd.getName());
         assertEquals("mykey", cmd.getKey());
         assertEquals(0, cmd.getFlags());
         assertEquals(60, cmd.getTtl());
         assertEquals(4, cmd.getLength());
         assertEquals("data", cmd.getValue());
+        assertEquals("1283838747", cmd.getCallingkey());
 
         //Basic get.
-        cmd = Command.instanceOf("get mykey\r\n");
+        cmd = Command.instanceOf("get mykey\r\n 1283838747");
         assertEquals("get", cmd.getName());
         assertEquals("mykey", cmd.getKey());
+        assertEquals("1283838747", cmd.getCallingkey());
     }
 }

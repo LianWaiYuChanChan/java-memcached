@@ -10,5 +10,6 @@ package com.flash.memcached.client;
  */
 
 public interface CommandService {
+    boolean isAlive();
     String executeCmd(String cmd);
 }
