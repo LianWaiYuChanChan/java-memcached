@@ -67,8 +67,8 @@ public class CommandServiceImpl implements CommandService {
 
         // create a socket with a timeout
         try {
-            InetAddress inteAddress = InetAddress.getByName(server);
-            SocketAddress socketAddress = new InetSocketAddress(inteAddress, port);
+            InetAddress inetAddress = InetAddress.getByName(server);
+            SocketAddress socketAddress = new InetSocketAddress(inetAddress, port);
 
             // create a socket
             socket = new Socket();
