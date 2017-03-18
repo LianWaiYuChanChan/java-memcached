@@ -245,7 +245,7 @@ public class NettyServer {
         f.channel().close().sync();
     }
 
-    public NettyServer start(int port) {
+    public static NettyServer start(int port) {
         KeyValueStorageService keyValueStorageService = new KeyValueStorageServiceImpl();
         try {
             NettyServer  nettyServer = new NettyServer(port, keyValueStorageService);
