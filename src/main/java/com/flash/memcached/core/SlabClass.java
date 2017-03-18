@@ -1,11 +1,43 @@
 package com.flash.memcached.core;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+
 /**
  * Created by zhangj52 on 3/18/2017.
  */
 public class SlabClass {
-    private Slab[] slabs;
 
+
+    private static class ChunkLocation {
+
+        public int getSlabIdx() {
+            return slabIdx;
+        }
+
+        public void setSlabIdx(int slabIdx) {
+            this.slabIdx = slabIdx;
+        }
+
+        public int getChunkIdx() {
+            return chunkIdx;
+        }
+
+        public void setChunkIdx(int chunkIdx) {
+            this.chunkIdx = chunkIdx;
+        }
+
+        public ChunkLocation(int slabIdx, int chunkIdx) {
+            this.slabIdx = slabIdx;
+            this.chunkIdx = chunkIdx;
+        }
+
+        private int slabIdx;
+        private int chunkIdx;
+    }
+
+    private Slab[] slabs;
     //chunk size
     private int chunkSize;
     //How many chunks per slab.
@@ -28,4 +60,29 @@ public class SlabClass {
     public void putChunk(byte[] src, int slabOffset, int chunkOffset) {
         slabs[slabOffset].putChunk(src, chunkOffset);
     }
+
+    public int getChunkSize() {
+        return chunkSize;
+    }
+
+    public void setChunkSize(int chunkSize) {
+        this.chunkSize = chunkSize;
+    }
+
+    public boolean isFull() {
+        //TODO:
+        return false;
+    }
+
+    public void addItemBytes(byte[] objBytes) {
+        ChunkLocation chunkLoc = pickProperChunk();
+        putChunk(objBytes, chunkLoc.getSlabIdx(), chunkLoc.getChunkIdx());
+    }
+
+    private ChunkLocation pickProperChunk() {
+        //TODO
+        return new ChunkLocation(0, 1);
+    }
+
+
 }

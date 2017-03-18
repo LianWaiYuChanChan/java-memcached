@@ -23,4 +23,5 @@ public class SlabClassTest {
         assertEquals(2, bytesGot[2]);
         assertEquals(3, bytesGot[3]);
     }
+
 }
