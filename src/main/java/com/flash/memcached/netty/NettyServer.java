@@ -111,7 +111,7 @@ public class NettyServer {
          */
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            ByteBuf byteBuf = (ByteBuf)msg;
+            ByteBuf byteBuf = (ByteBuf) msg;
             String cmd = byteBuf.toString(CharsetUtil.US_ASCII);
             String ret = kvStorageSrv.executeCmd(cmd);
             ByteBuf returnByteBuff = Unpooled.wrappedBuffer(ret.getBytes());
@@ -161,6 +161,9 @@ public class NettyServer {
         this.kvStroageSrv = kvStroageSrv;
     }
 
+    //TODO refactor
+    private ServerBootstrap serverBootstrap = new ServerBootstrap();
+
     public void run() throws Exception {
         /***
          * NioEventLoopGroup 是用来处理I/O操作的多线程事件循环器，
@@ -175,22 +178,22 @@ public class NettyServer {
          */
         EventLoopGroup bossGroup = new NioEventLoopGroup();
         EventLoopGroup workerGroup = new NioEventLoopGroup();
-        System.out.println("Listen on: " + port);
         try {
             /**
              * ServerBootstrap 是一个启动NIO服务的辅助启动类
              * 你可以在这个服务中直接使用Channel
              */
-            ServerBootstrap b = new ServerBootstrap();
+            ServerBootstrap serverBootstrap = new ServerBootstrap();
+            this.serverBootstrap = serverBootstrap;
             /**
              * 这一步是必须的，如果没有设置group将会报java.lang.IllegalStateException: group not set异常
              */
-            b = b.group(bossGroup, workerGroup);
+            serverBootstrap = serverBootstrap.group(bossGroup, workerGroup);
             /***
              * ServerSocketChannel以NIO的selector为基础进行实现的，用来接收新的连接
              * 这里告诉Channel如何获取新的连接.
              */
-            b = b.channel(NioServerSocketChannel.class);
+            serverBootstrap = serverBootstrap.channel(NioServerSocketChannel.class);
             /***
              * 这里的事件处理类经常会被用来处理一个最近的已经接收的Channel。
              * ChannelInitializer是一个特殊的处理类，
@@ -200,7 +203,7 @@ public class NettyServer {
              * 当你的程序变的复杂时，可能你会增加更多的处理类到pipline上，
              * 然后提取这些匿名类到最顶层的类上。
              */
-            b = b.childHandler(new ChannelInitializer<SocketChannel>() { // (4)
+            serverBootstrap = serverBootstrap.childHandler(new ChannelInitializer<SocketChannel>() { // (4)
                 @Override
                 public void initChannel(SocketChannel ch) throws Exception {
                     ch.pipeline().addLast(new ResponseServerHandler(kvStroageSrv));
@@ -214,31 +217,43 @@ public class NettyServer {
              * 因此我们被允许设置socket的参数选项比如tcpNoDelay和keepAlive。
              * 请参考ChannelOption和详细的ChannelConfig实现的接口文档以此可以对ChannelOptions的有一个大概的认识。
              */
-            b = b.option(ChannelOption.SO_BACKLOG, 128);
+            serverBootstrap = serverBootstrap.option(ChannelOption.SO_BACKLOG, 128);
             /***
              * option()是提供给NioServerSocketChannel用来接收进来的连接。
              * childOption()是提供给由父管道ServerChannel接收到的连接，
              * 在这个例子中也是NioServerSocketChannel。
              */
-            b = b.childOption(ChannelOption.SO_KEEPALIVE, true);
+            serverBootstrap = serverBootstrap.childOption(ChannelOption.SO_KEEPALIVE, true);
 
             // Bind the port and accept incoming connecting.
-            ChannelFuture f = b.bind(port).sync();
+            Logger.log("Listen on: " + port);
+            ChannelFuture channelFuture = serverBootstrap.bind(port).sync();
 
             // Will block until socket was closed.
-            f.channel().closeFuture().sync();
+            Logger.log("ChannelFuture sync");
+
+            channelFuture.channel().closeFuture().sync();
         } finally {
             workerGroup.shutdownGracefully();
             bossGroup.shutdownGracefully();
         }
     }
 
-    public static void start(int port)  {
+    public void close() throws InterruptedException {
+        ChannelFuture f = this.serverBootstrap.bind().sync();
+        // Call this once you want to stop accepting new connections.
+        f.channel().close().sync();
+    }
+
+    public NettyServer start(int port) {
         KeyValueStorageService keyValueStorageService = new KeyValueStorageServiceImpl();
         try {
-            new NettyServer(port, keyValueStorageService).run();
+            NettyServer  nettyServer = new NettyServer(port, keyValueStorageService);
+            nettyServer.run();
+            return nettyServer;
         } catch (Exception e) {
             Logger.log(e.getMessage());
+            return null;
         }
     }
 

@@ -20,23 +20,29 @@ public class EndToEndTest {
 
     private static class NettyThread implements Runnable {
         private int port;
+        private NettyServer nettyServer;
 
-        public NettyThread(int port) {
+        public NettyThread(NettyServer nettyServer, int port) {
+
             this.port = port;
+
         }
 
         @Override
         public void run() {
             System.out.println("NettyThread started.");
-            NettyServer.start(port);
+            nettyServer = NettyServer.start(port);
             System.out.println("NettyThread stopped.");
         }
     }
+    private Thread memCachedThread = null;
+    private NettyServer nettyServer = null;
 
     @Before
     public void startMemcachedServer() throws Exception {
         NettyThread nettyThread = new NettyThread(port);
-        new Thread(nettyThread).start();
+        memCachedThread = new Thread(nettyThread);
+        memCachedThread.start();
         //wait for server startup completely.
         Thread.sleep(10 * 1000);
     }
@@ -48,5 +54,8 @@ public class EndToEndTest {
         String ret = cmdService.executeCmd("set mykey 0 60 4\r\ndata\r\n");
         //TODO: test will hang here.
         System.err.println(ret);
+        System.out.println("Try to interrupt memcached trhead");
+        memCachedThread.interrupt();
+
     }
 }
