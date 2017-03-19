@@ -77,6 +77,14 @@ public class SlabMemory {
         this.keyToItemLoc = new HashMap<>();
     }
 
+    public void addItem(String key, Object value, Options options) {
+        int expireTimeout = options.getExpireTimeout();
+        long currentTime = System.currentTimeMillis()/1000L;
+        long expireTime = currentTime + expireTimeout;
+        Item item = new Item(key, value, expireTime);
+        addItem(item);
+    }
+
     public void addItem(Item item) {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         try {
@@ -114,10 +122,97 @@ public class SlabMemory {
         }
     }
 
+    public void updateItem(Item item) {
+        String key = item.getKey();
+        if (!checkItemExisted(key)) {
+            throw new IllegalArgumentException("Item cannot be found with key: " + key);
+        }
+
+        ItemLocation itemLoc = keyToItemLoc.get(key);
+        SlabClass slabClass = slabClasses[itemLoc.getSlabClassIdx()];
+
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        ObjectOutputStream objectOutputStream = null;
+        try {
+            objectOutputStream = new ObjectOutputStream(byteArrayOutputStream);
+            objectOutputStream.writeObject(item);
+            byteArrayOutputStream.close();
+            byte[] objBytes = byteArrayOutputStream.toByteArray();
+            if (objBytes.length > slabClass.getChunkSize()) {
+                throw new IllegalArgumentException("Item is too big with key: " + key);
+            }
+
+            slabClass.updateItemBytes(objBytes, itemLoc.getChunkLoc());
+            itemLocToLength.put(itemLoc, objBytes.length);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+
+    private boolean checkItemExisted(String key) {
+        ItemLocation itemLoc = keyToItemLoc.get(key);
+        if (itemLoc == null) {
+            return false;
+        }
+        Item itemInSlab = doGetItem(key);
+        boolean expired = itemInSlab.isExpired();
+        if (expired) {
+            //Clear it.
+            clearItemByKey(key);
+        }
+        return !expired;
+    }
+
+    private void clearItemByKey(String key) {
+        ItemLocation itemLoc = keyToItemLoc.get(key);
+        int slabClassIdx = itemLoc.getSlabClassIdx();
+        SlabClass.ChunkLocation chunkLoc = itemLoc.getChunkLoc();
+
+        //FreeChunkMap and KeyToItemLoc are coupled. can be constructed as one class?
+        slabClasses[slabClassIdx].freeChunk(chunkLoc);
+        keyToItemLoc.remove(key);
+    }
+
+    public void deleteItem(String key) {
+        if (!checkItemExisted(key)) {
+            //Keep silent for deleting non-exist key.
+            return;
+        }
+
+        ItemLocation itemLoc = keyToItemLoc.get(key);
+        int slabClassIdx = itemLoc.getSlabClassIdx();
+        SlabClass.ChunkLocation chunkLoc = itemLoc.getChunkLoc();
+
+        //FreeChunkMap and KeyToItemLoc are coupled. can be constructed as one class?
+        slabClasses[slabClassIdx].freeChunk(chunkLoc);
+        keyToItemLoc.remove(key);
+    }
+
     public Item getItem(String key) {
-        //Based on key, I have to find item location (which slab class, which slab, which chunk)
-        // and chunk boundary (how?) Need a map chunk: length.
+        ItemLocation itemLoc = keyToItemLoc.get(key);
+        if (itemLoc == null) {
+            return null;
+        }
+        Item itemInSlab = doGetItem(key);
+        boolean expired = itemInSlab.isExpired();
+        if (expired) {
+            //Clear it.
+            clearItemByKey(key);
+            return null;
+        } else {
+            return itemInSlab;
+        }
+    }
+
+    public Item doGetItem(String key) {
+
         ItemLocation itemLocation = keyToItemLoc.get(key);
+        if (itemLocation == null) {
+            return null;
+        }
         int slabClassIdx = itemLocation.getSlabClassIdx();
         byte[] chunkBytes = slabClasses[slabClassIdx].getChunk(itemLocation.getChunkLoc());
         int itemBytesLength = itemLocToLength.get(itemLocation);//Need a map to get this info from key.
@@ -134,7 +229,5 @@ public class SlabMemory {
 
         return null;
     }
-
-
 
 }

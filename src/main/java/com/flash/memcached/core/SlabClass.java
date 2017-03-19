@@ -10,9 +10,7 @@ import java.util.Set;
 public class SlabClass {
 
 
-    public byte[] getChunk(ChunkLocation chunkLoc) {
-        return getChunk(chunkLoc.getSlabIdx(), chunkLoc.getChunkIdx());
-    }
+
 
     static class ChunkLocation {
 
@@ -100,6 +98,15 @@ public class SlabClass {
         return bytes;
     }
 
+    public byte[] getChunk(ChunkLocation chunkLoc) {
+        return getChunk(chunkLoc.getSlabIdx(), chunkLoc.getChunkIdx());
+    }
+
+    public void freeChunk(ChunkLocation chunkLoc) {
+        freeChunkSet.add(chunkLoc);
+    }
+
+
     public void putChunk(byte[] src, int slabOffset, int chunkOffset) {
         slabs[slabOffset].putChunk(src, chunkOffset);
     }
@@ -121,6 +128,10 @@ public class SlabClass {
         putChunk(objBytes, chunkLoc.getSlabIdx(), chunkLoc.getChunkIdx());
         markChunkAsOccupied(chunkLoc);
         return chunkLoc;
+    }
+
+    public void updateItemBytes(byte[] objBytes, ChunkLocation chunkLoc) {
+        putChunk(objBytes, chunkLoc.getSlabIdx(), chunkLoc.getChunkIdx());
     }
 
     private void markChunkAsOccupied(ChunkLocation chunkLoc) {
