@@ -1,8 +1,8 @@
 package com.flash.memcached.core;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectOutputStream;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Set;
 
 /**
  * Created by zhangj52 on 3/18/2017.
@@ -10,7 +10,11 @@ import java.io.ObjectOutputStream;
 public class SlabClass {
 
 
-    private static class ChunkLocation {
+    public byte[] getChunk(ChunkLocation chunkLoc) {
+        return getChunk(chunkLoc.getSlabIdx(), chunkLoc.getChunkIdx());
+    }
+
+    static class ChunkLocation {
 
         public int getSlabIdx() {
             return slabIdx;
@@ -33,10 +37,37 @@ public class SlabClass {
             this.chunkIdx = chunkIdx;
         }
 
+        @Override
+        public boolean equals(Object o) {
+            if (this == o){
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()){
+                return false;
+            }
+
+            ChunkLocation that = (ChunkLocation) o;
+
+            return slabIdx == that.slabIdx && chunkIdx == that.chunkIdx;
+        }
+
+        /**
+         * Just generate hashCode by IntelliJ. TODO: need improve?
+         * @return
+         */
+        @Override
+        public int hashCode() {
+            int result = slabIdx;
+            result = 31 * result + chunkIdx;
+            return result;
+        }
+
         private int slabIdx;
         private int chunkIdx;
     }
 
+
+    Set<ChunkLocation> freeChunkSet = new HashSet<>();
     private Slab[] slabs;
     //chunk size
     private int chunkSize;
@@ -49,6 +80,18 @@ public class SlabClass {
             slabs[i] = new Slab(chunkSize);
         }
         this.chunkSize = chunkSize;
+
+        //Compute perSlab
+        this.perSlab = slabs[0].getTotalSize()/chunkSize;
+
+        //Construct freeChunkSet
+        for(int i =0; i < slabCount; i++) {
+            for(int j = 0; j < perSlab; j++) {
+                ChunkLocation chunkLoc = new ChunkLocation(i, j);
+                freeChunkSet.add(chunkLoc);
+            }
+        }
+
     }
 
     public byte[] getChunk(int slabOffset, int chunkOffset) {
@@ -70,19 +113,28 @@ public class SlabClass {
     }
 
     public boolean isFull() {
-        //TODO:
-        return false;
+        return freeChunkSet.isEmpty();
     }
 
-    public void addItemBytes(byte[] objBytes) {
+    public ChunkLocation addItemBytes(byte[] objBytes) {
         ChunkLocation chunkLoc = pickProperChunk();
         putChunk(objBytes, chunkLoc.getSlabIdx(), chunkLoc.getChunkIdx());
+        markChunkAsOccupied(chunkLoc);
+        return chunkLoc;
+    }
+
+    private void markChunkAsOccupied(ChunkLocation chunkLoc) {
+        freeChunkSet.remove(chunkLoc);
     }
 
     private ChunkLocation pickProperChunk() {
-        //TODO
-        return new ChunkLocation(0, 1);
+        if (isFull()) {
+            //TODO
+            throw new IllegalStateException("Empty free chunk set. May need implement LRU.");
+        }
+        Iterator<ChunkLocation> iter = freeChunkSet.iterator();
+        ChunkLocation freeChunk = iter.next();
+        return freeChunk;
     }
-
 
 }

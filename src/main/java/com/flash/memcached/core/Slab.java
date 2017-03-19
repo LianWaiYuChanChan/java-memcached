@@ -8,12 +8,18 @@ import java.nio.ByteBuffer;
 public class Slab {
     private ByteBuffer byteBuffer = null;
     private int chunkSize;
+    private int totalSize;
     private static int MB = 1024*1024;
 
     public Slab(int chunkSize) {
         //Default 1 MB.
         byteBuffer = ByteBuffer.allocateDirect(MB);
+        this.totalSize = MB;
         this.chunkSize = chunkSize;
+    }
+
+    public int getTotalSize(){
+        return this.totalSize;
     }
 
     public void getChunk(byte[] dest, int chunkOffSet) {

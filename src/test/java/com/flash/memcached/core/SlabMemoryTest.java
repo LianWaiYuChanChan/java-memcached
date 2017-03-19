@@ -17,5 +17,12 @@ public class SlabMemoryTest {
         item = slabMemory.getItem("One");
         System.out.println(item);
         assertEquals("Two", item.getValue());
+
+
+        item = new Item("Two", "Three");
+        slabMemory.addItem(item);
+        item = slabMemory.getItem("Two");
+        System.out.println(item);
+        assertEquals("Three", item.getValue());
     }
 }
